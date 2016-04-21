@@ -2,8 +2,8 @@
 
 int main()
 {
-	vector<Planet> planets_drawing;
-	PhysicsEngine planets_calculation;
+	map <int, Planet> planets_drawing;
+	PhysicsEngine planets_calculation = PhysicsEngine();
 	planets_calculation.Initialize();
 
 	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGTH), "Game");
@@ -19,7 +19,6 @@ int main()
 
 		if (clock.getElapsedTime().asMilliseconds() > time_step)
 		{
-			//UpdatePosition(planets);
 			clock.restart();
 		}
 

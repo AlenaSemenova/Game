@@ -12,6 +12,7 @@ public:
 		velocity = m_vel;
 		acceleration = m_acc;
 	}
+	Planet() = default;
 	float mass;
 	Vector2f velocity;
 	Vector2f acceleration;
