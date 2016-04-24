@@ -3,27 +3,26 @@
 #define gravity 10
 //минимальное расстояние между планетами, для которого имеет смысл считать ускорение//
 #define r_min 1 
+#define my_planet_radius 10
 
 extern float dt;
+extern mutex _mutex;
 
 /* Здесь надо будет подумать насчет масштабирования и способа хранения текстур */
 void PhysicsEngine::Initialize()
 {
-	Vector2f vect_1_1 = Vector2f(1.0f, 1.0f);
-	Vector2f vect_0_0 = Vector2f(1.0f, 1.0f);
-
 	/* Создает нашу планету (в центре экрана, масса = 1, скорость и ускорение = 0) и добавляет ее в planets[0] */
 	Texture *texture_my_planet = new Texture();
 	(*texture_my_planet).loadFromFile("Gnome-Weather-Clear-64.png");
 	Vector2f pos_my_planet = Vector2f(float(WINDOW_WIDTH / 2), float(WINDOW_HEIGTH / 2));
-	Planet *p_my_planet = new Planet(pos_my_planet, vect_1_1, 1.0f, vect_0_0, vect_0_0, *texture_my_planet);
+	Planet *p_my_planet = new Planet(pos_my_planet, my_planet_radius, 1.0f, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), *texture_my_planet);
 	planets.insert(pair <int, Planet> (0, *p_my_planet));
 
 	/*  В planets[1] всегда будет храниться наша псевдопланета.
 	Если мышка не нажата - обнуляем массу, если нажата - присваиваем массу нашей планеты */
 	Texture *texture_cursor = new Texture();
 	(*texture_cursor).loadFromFile("Face-Angry-128.png");
-	Planet *p_cursor = new Planet(vect_0_0, vect_1_1, 0.0f, vect_0_0, vect_0_0, *texture_cursor);
+	Planet *p_cursor = new Planet(Vector2f(0.0f, 0.0f), 0, 0.0f, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), *texture_cursor);
 	planets.insert(pair <int, Planet>(1, *p_cursor));
 }
 
@@ -85,6 +84,12 @@ void PhysicsEngine::UpdatePosition()
 {
 	CalculateAccelerations();
 	GravityMovement();
+
+
+	/* Скорость и ускорения крусора всегда равны нулю */
+	map<int, Planet>::iterator coursor = ++planets.begin();
+	coursor->second.acceleration = Vector2f(0.0f, 0.0f);
+	coursor->second.velocity = Vector2f(0.0f, 0.0f);
 }
 
 void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
@@ -101,11 +106,7 @@ void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
 		}
 		if (i->first == j->first)
 		{
-			j->second.setPosition(i->second.getPosition());
-			j->second.setScale(i->second.getScale());
-			j->second.mass = i->second.mass;
-			j->second.velocity = i->second.velocity;
-			j->second.acceleration = i->second.acceleration;
+			j->second.SetСharacteristics(i->second.getPosition(), i->second.radius, i->second.mass, i->second.velocity, i->second.acceleration);
 			++j;
 		}
 	}
@@ -120,4 +121,13 @@ void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
 		++j;
 		copy_planets.erase(tmp);
 	}		
+}
+
+
+void PhysicsEngine::ChangeCoursorPlanet(Vector2f coursor_position)
+{
+	map<int, Planet>::iterator my_planet = planets.begin(), coursor = ++my_planet;
+	_mutex.lock();
+	coursor->second.SetСharacteristics(coursor_position, my_planet->second.radius, my_planet -> second.mass, Vector2f(0.0f, 0.0f), Vector2f(1.0f, 1.0));
+	_mutex.unlock();
 }

@@ -3,7 +3,7 @@
 class PhysicsEngine
 {
 public:	
-	map<int, Planet> planets;
+	map <int, Planet> planets;
 	
 	void Initialize();
 	void UpdatePosition();
@@ -11,4 +11,5 @@ public:
 	void GravityMovement();
 	void Collision();
 	void GetSnapshot(map<int, Planet>& copy_planets);
+	void ChangeCoursorPlanet(Vector2f coursor_position);
 };
