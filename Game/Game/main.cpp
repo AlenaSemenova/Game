@@ -2,18 +2,17 @@
 
 #define drawing_step 40
 #define calculation_step 20
-#define NUM_PLANETS_TEXTURES 2
 
 mutex _mutex;
 std::atomic<bool> end_game(false);
 float dt;
+Texture textures[NUM_PLANETS_TEXTURES];
 
 void InitializeTextures(Texture*  textures);
 
 /*  Нить вычислений */
 void CalculationThread(PhysicsEngine* planets)
 {
-	Clock calculation_clock;
 	/* Выполняется, пока процесс в main не установил end_game = 1 */
 	while (!end_game)
 	{
@@ -23,7 +22,6 @@ void CalculationThread(PhysicsEngine* planets)
 
 		/* Время обновления координат - 20 миллисекунд */
 		sleep(milliseconds(calculation_step));
-		calculation_clock.restart();
 	}	
 }
 
@@ -31,15 +29,16 @@ int main()
 {
 	map <int, Planet> planets_drawing;
 	PhysicsEngine planets_calculation;
-	Texture textures[NUM_PLANETS_TEXTURES];
 	InitializeTextures(textures);
 
-	planets_calculation.Initialize(textures);
+	planets_calculation.Initialize();
 	planets_calculation.GetSnapshot(planets_drawing);
 	thread Thread(CalculationThread, &planets_calculation);
 
 	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGTH), "Game");
-	Clock elapsed_time, drawing_clock;
+	//View view(Vector2f(WINDOW_WIDTH / 2, WINDOW_HEIGTH / 2), Vector2f(VIEW_WIDTH, VIEW_HEIGTH));
+
+	Clock elapsed_time;
 	Event event;
 	Vector2f mouse_position;
 	map<int, Planet>::iterator it_my_planet = planets_drawing.begin(), it_coursor = ++(planets_drawing.begin());
@@ -90,8 +89,7 @@ int main()
 		window.display();
 
 		/* Шаг отрисовки - 40 миллисекунд */
-		sleep(milliseconds(drawing_step));
-		drawing_clock.restart();	
+		sleep(milliseconds(drawing_step));	
 	}		
 }
 

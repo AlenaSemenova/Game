@@ -5,7 +5,7 @@ class PhysicsEngine
 public:	
 	map <int, Planet> planets;
 	
-	void Initialize(Texture* textures);
+	void Initialize();
 	void UpdatePosition();
 	void CalculateAccelerations();
 	void GravityMovement();
@@ -14,4 +14,5 @@ public:
 	void CoursorPlanetOn(Vector2f coursor_position);
 	void CoursorPlanetOff();
 	void GetOutBorders();
+	void PlanetsGeneration();
 };
