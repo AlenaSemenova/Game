@@ -3,7 +3,7 @@
 #define drawing_step 40
 #define calculation_step 20
 
-mutex _mutex;
+mutex _mutex; //при обращении к PhysicsEngine любая из нитей блокирует _mutex
 std::atomic<bool> end_game(false);
 float dt;
 Texture textures[NUM_PLANETS_TEXTURES];
@@ -76,7 +76,7 @@ int main()
 		/* Обновляем расположение планет */
 		_mutex.lock();
 		planets_calculation.GetSnapshot(planets_drawing);
-		dt = elapsed_time.getElapsedTime().asSeconds(); //записываем точное прошедшее время в секундах (нужно для вычислений)
+		dt = elapsed_time.getElapsedTime().asSeconds(); //записываем точное прошедшее время в секундах (для вычислений)
 		elapsed_time.restart();
 		_mutex.unlock();
 

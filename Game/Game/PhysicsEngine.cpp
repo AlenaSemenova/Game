@@ -3,8 +3,10 @@
 #define gravity 1000
 //минимальное расстояние между планетами, для которого имеет смысл считать ускорение//
 #define r_min 50 
+//используется при создании нашей планеты//
 #define my_planet_radius 10.0f
 #define my_planet_mass 10.0f
+//Число планет в окне (не во view) = const //
 #define NUM_PLANETS 5
 //используется при генерации планет//
 #define block_size 50
@@ -19,7 +21,6 @@ int current_id = 2;
 bool is_occupied_place[WINDOW_WIDTH / block_size][WINDOW_HEIGTH / block_size];
 extern Texture textures[NUM_PLANETS_TEXTURES];
 
-/* Здесь надо будет подумать насчет масштабирования и способа хранения текстур */
 void PhysicsEngine::Initialize()
 {
 	/* Создает нашу планету (в центре экрана, масса = 1, скорость и ускорение = 0) и добавляет ее в planets[0] */
@@ -53,7 +54,7 @@ inline float Length(Vector2f r)
 	return sqrt((r.x * r.x) + (r.y * r.y));
 }
 
-/* Рассчитывает ускорения планет*/
+/* Рассчитывает ускорения планет */
 void PhysicsEngine::CalculateAccelerations()
 {
 	Vector2f r;
@@ -87,6 +88,7 @@ void PhysicsEngine::GravityMovement()
 	}
 }
 
+/* Обрабатывает столкновения планет (не дописана) */
 void PhysicsEngine::Collision()
 {
 	Vector2f r;
@@ -100,6 +102,7 @@ void PhysicsEngine::Collision()
 	}
 }
 
+/* делает моментальный снимок списка планет для физических вычислений и записывает в copy_planets для рисования  */
 void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
 {
 	map<int, Planet>::iterator i = planets.begin(), j = copy_planets.begin(), tmp;
@@ -128,6 +131,7 @@ void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
 	}		
 }
 
+/* Задает курсору массу, равную массе нашей планеты, во время нажатия мышки */
 void PhysicsEngine::CoursorPlanetOn(Vector2f coursor_position)
 {
 	map<int, Planet>::iterator my_planet = planets.begin(), coursor = ++(planets.begin());
@@ -136,6 +140,7 @@ void PhysicsEngine::CoursorPlanetOn(Vector2f coursor_position)
 	_mutex.unlock();
 }
 
+/* Обнуляет массу куросора, при отпускании мышки */
 void PhysicsEngine::CoursorPlanetOff()
 {
 	map<int, Planet>::iterator my_planet = planets.begin(), coursor = ++(planets.begin());
@@ -154,6 +159,8 @@ inline bool GetOutYBorders(map<int, Planet>& planets, map<int, Planet>::iterator
 	return ((WINDOW_HEIGTH - (i->second.getPosition().y)) <= i->second.radius || i->second.getPosition().y <= i->second.radius);
 }
 
+/* При столкновении с границами окна:
+	наша планета  упруго отражается, другие планеты удаляются из списка */
 void PhysicsEngine::GetOutBorders()
 {
 	map<int, Planet>::iterator i = planets.begin();
@@ -180,12 +187,27 @@ void PhysicsEngine::GetOutBorders()
 	}
 }
 
+/* Находит место для новой планеты. Для этого используется глобальный массив is_occupied_place, 
+	который представляет из себя игровое поле, разбитое на сектора размера block_size * block_size.
+	Сектор помечается занятым, если в нем находится другая планета или он в видимости пользователя.
+	Из пустых клеток рандомно выбирается любая. Функция возвращает значение bool, найдено ли место, и передает в empty_place его координаты*/
 bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 {
+	int N = (WINDOW_WIDTH / block_size), M = (WINDOW_HEIGTH / block_size);
+	int size = N * M;
+
+	/* Обнуляем массив is_occupied_place*/
+	for (int i = 0; i < N; ++i)
+	{
+		for (int j = 0; j < M; ++j)
+			is_occupied_place[i][j] = false;
+	}
+
 	Vector2i pos_corner_view = Vector2i(planets[0].getPosition()) - Vector2i(VIEW_WIDTH / 2, VIEW_HEIGTH / 2);
 	if (pos_corner_view.x < 0 || pos_corner_view.y < 0)
 		pos_corner_view = Vector2i(0, 0);
 
+	/* Отмечает блоки, занятые view (то есть в видимости пользователя) */
 	int tmp_x = (pos_corner_view.x + VIEW_WIDTH) / block_size, tmp_y = (pos_corner_view.y + VIEW_HEIGTH) / block_size;
 	for (int i = pos_corner_view.x / block_size; i <= tmp_x; ++i)
 	{
@@ -193,6 +215,7 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 			is_occupied_place[i][j] = true;
 	}
 
+	/* Отмечает блоки, зантяые другими планетами */
 	Vector2i planet_pos;
 	for (map<int, Planet>::iterator it = planets.begin(); it != planets.end(); ++it)
 	{
@@ -200,7 +223,7 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 		is_occupied_place[planet_pos.x / block_size][planet_pos.y / block_size] = true;
 	}
 	
-	int N = (WINDOW_WIDTH / block_size), size = (WINDOW_WIDTH / block_size) * (WINDOW_HEIGTH / block_size);
+	/* Выбираем любой из свобоных блоков */
 	int random_i = rand() % size;
 	Vector2f return_pos;
 	for (int i = random_i; i < size; ++i)
@@ -222,6 +245,8 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 	return false;
 }
 
+/* Количество планет поддерживается (почти) константой. 
+ Если на этом шаге мы не нашли пустое место и FindEmptyPlace вернуло false, то откладываем добавление планет до следующего шага.*/
 void PhysicsEngine::PlanetsGeneration()
 { 
 	Vector2f pos_new_planet;

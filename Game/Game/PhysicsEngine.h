@@ -1,5 +1,6 @@
-#pragma once
+﻿#pragma once
 
+/* Класс для физических вычислений */
 class PhysicsEngine
 {
 public:	
