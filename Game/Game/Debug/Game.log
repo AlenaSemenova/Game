@@ -1,7 +1,2 @@
-﻿  Planets.cpp
-  PhysicsEngine.cpp
-c:\users\alena\documents\visual studio 2015\projects\game\game\physicsengine.cpp(233): warning C4244: аргумент: преобразование "int" в "float", возможна потеря данных
-c:\users\alena\documents\visual studio 2015\projects\game\game\physicsengine.cpp(241): warning C4244: аргумент: преобразование "int" в "float", возможна потеря данных
-  main.cpp
-  Создание кода...
+﻿  main.cpp
   Game.vcxproj -> C:\Users\Alena\documents\visual studio 2015\Projects\Game\Debug\Game.exe

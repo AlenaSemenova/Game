@@ -4,64 +4,78 @@
 #define calculation_step 20
 
 mutex _mutex; //при обращении к PhysicsEngine любая из нитей блокирует _mutex
+mutex expl_mutex; //при обращении к вектору explosions нити блокируют expl_mutex
+std::atomic<bool> window_closed(false);
 std::atomic<bool> end_game(false);
 float dt;
-Texture textures[NUM_PLANETS_TEXTURES];
+Texture planets_textures[NUM_PLANETS_TEXTURES];
 
-void InitializeTextures(Texture*  textures);
+void DisplayMenu(Scene & window);
+void InitializePlanetsTextures(Texture* planets_textures);
+void InitializeSkyTextures(Texture* sky_textures);
+void GameOver(std::thread & thread, Scene & window);
 
 /*  Нить вычислений */
-void CalculationThread(PhysicsEngine* planets)
+void CalculationThread(PhysicsEngine* planets_calculation)
 {
+	Clock calculation_time;
+	Time sleep_time;
 	/* Выполняется, пока процесс в main не установил end_game = 1 */
-	while (!end_game)
+	while (!window_closed && !end_game)
 	{
 		_mutex.lock();
-		planets->UpdatePosition();
+		planets_calculation->UpdatePosition();
 		_mutex.unlock();
 
 		/* Время обновления координат - 20 миллисекунд */
-		sleep(milliseconds(calculation_step));
+		sleep_time = milliseconds(calculation_step) - calculation_time.getElapsedTime();
+		sleep(milliseconds(calculation_step) - calculation_time.getElapsedTime());
+		calculation_time.restart();
 	}	
 }
 
 int main()
 {
-	map <int, Planet> planets_drawing;
-	PhysicsEngine planets_calculation;
-	InitializeTextures(textures);
+	Scene window_drawing(VideoMode(WINDOW_WIDTH, WINDOW_HEIGTH), "Game");
+	DisplayMenu(window_drawing);
 
+	PhysicsEngine planets_calculation;
+	Texture sky_textures[NUM_SKY_TEXTURES];
+
+	InitializePlanetsTextures(planets_textures);
+	InitializeSkyTextures(sky_textures);
 	planets_calculation.Initialize();
-	planets_calculation.GetSnapshot(planets_drawing);
+	window_drawing.Initialize(sky_textures);
+	window_drawing.GetSnapshot(planets_calculation);
+	planets_calculation.explosions = &(window_drawing.explosions);	
+
 	thread Thread(CalculationThread, &planets_calculation);
 
-	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGTH), "Game");
-	//View view(Vector2f(WINDOW_WIDTH / 2, WINDOW_HEIGTH / 2), Vector2f(VIEW_WIDTH, VIEW_HEIGTH));
-
-	Clock elapsed_time;
+	Clock elapsed_time, drawing_time, time_result;
 	Event event;
 	Vector2f mouse_position;
-	map<int, Planet>::iterator it_my_planet = planets_drawing.begin(), it_coursor = ++(planets_drawing.begin());
+	map<int, Planet>::iterator it_my_planet = window_drawing.planets.begin(), it_coursor = ++(window_drawing.planets.begin());
 	bool mouse_prev_state = 0;
-	while (window.isOpen())
-	{	
-		while (window.pollEvent(event))
+	while (window_drawing.isOpen())
+	{			
+		while (window_drawing.pollEvent(event))
 		{
 			if (event.type == Event::Closed)
 			{
-				end_game = true;
-				Thread.join();
-				window.close();
+				window_closed = true;
+				GameOver(Thread, window_drawing);
 			}				
 		}
 
-		if (Mouse::isButtonPressed(Mouse::Left) && !mouse_prev_state)
+		if (end_game)
+			GameOver(Thread, window_drawing);
+
+		if (Mouse::isButtonPressed(Mouse::Left))
 		{
-			mouse_position = Vector2f(sf::Mouse::getPosition(window));
+			mouse_position = Vector2f(sf::Mouse::getPosition(window_drawing));
+			if (!mouse_prev_state)
+				mouse_prev_state = 1;
 			planets_calculation.CoursorPlanetOn(mouse_position);
-			(it_coursor->second).SetСharacteristics(mouse_position, it_my_planet->second.radius,
-				it_my_planet->second.mass, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f));
-			mouse_prev_state = 1;
 		}
 
 		if (!(Mouse::isButtonPressed(Mouse::Left)) && mouse_prev_state)
@@ -70,31 +84,52 @@ int main()
 			mouse_prev_state = 0;
 		}
 
-		if (mouse_prev_state)
-			Mouse::setPosition(Vector2i(mouse_position), window);		
-
 		/* Обновляем расположение планет */
 		_mutex.lock();
-		planets_calculation.GetSnapshot(planets_drawing);
+		window_drawing.GetSnapshot(planets_calculation);
 		dt = elapsed_time.getElapsedTime().asSeconds(); //записываем точное прошедшее время в секундах (для вычислений)
 		elapsed_time.restart();
 		_mutex.unlock();
 
 		/* Рисуем */
-		window.clear();
-		for (map<int, Planet>::iterator j = planets_drawing.begin(); j != planets_drawing.end(); ++j)
-		{
-			window.draw(j->second);
-		}			
-		window.display();
+		window_drawing.result_time = time_result.getElapsedTime();
+		window_drawing.Draw();
+		window_drawing.setView(window_drawing.view);
+		window_drawing.display();
 
 		/* Шаг отрисовки - 40 миллисекунд */
-		sleep(milliseconds(drawing_step));	
+		sleep(milliseconds(drawing_step) - drawing_time.getElapsedTime());			
+		drawing_time.restart();
+
 	}		
 }
 
-void InitializeTextures(Texture* textures)
+void  InitializePlanetsTextures(Texture* planets_textures)
 {
-	textures[0].loadFromFile("Gnome-Weather-Clear-64.png");
-	textures[1].loadFromFile("Face-Angry-128.png");
+	planets_textures[0].loadFromFile("images/Network_128.png");
+	planets_textures[1].loadFromFile("images/Network_128.png");
+	planets_textures[2].loadFromFile("images/GLBASIC_Planet1.png");
+	planets_textures[3].loadFromFile("images/GLBASIC_Planet3.png");
+	planets_textures[4].loadFromFile("images/greenplanet.png");
+	planets_textures[5].loadFromFile("images/planet.png");
+	planets_textures[6].loadFromFile("images/planet_x___ice_by_keizgon-d4x69zq.png");
+	planets_textures[7].loadFromFile("images/photo.png");
+	planets_textures[8].loadFromFile("images/planet-brown_512x512.png");
+}
+
+void InitializeSkyTextures(Texture* sky_textures)
+{
+	
+	sky_textures[0].loadFromFile("images/maxresdefault.png");
+	sky_textures[1].loadFromFile("images/14532890251crackpot-space-3.png");
+	sky_textures[2].loadFromFile("images/asteroid-flying-in-space-wallpaper-1.png");
+	sky_textures[3].loadFromFile("images/8PqXCbLu2m-1920x1080.png");
+	sky_textures[4].loadFromFile("images/2250835.png");
+}
+
+void GameOver(thread & thread, Scene & window)
+{
+	thread.join();
+	window.DrawGameOver();
+	window.close();
 }

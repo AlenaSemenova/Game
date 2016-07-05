@@ -1,51 +1,47 @@
 ﻿#include "Header.h"
 
-#define gravity 1000
+#define gravity 10
 //минимальное расстояние между планетами, для которого имеет смысл считать ускорение//
 #define r_min 50 
 //используется при создании нашей планеты//
-#define my_planet_radius 10.0f
+#define my_planet_radius 35.0f
 #define my_planet_mass 10.0f
 //Число планет в окне (не во view) = const //
 #define NUM_PLANETS 5
 //используется при генерации планет//
 #define block_size 50
-#define radius_dispersion 5
-#define mass_dispersion 5
+#define radius_dispersion 25
+#define radius_dispersion_min 25
 #define velocity_dispersion 5
+#define mass_coeff 3
+#define end_explosion_step 10
 
 extern float dt;
 extern mutex _mutex;
+extern mutex expl_mutex;
+extern std::atomic<bool> end_game;
 int current_id = 2;
-
-bool is_occupied_place[WINDOW_WIDTH / block_size][WINDOW_HEIGTH / block_size];
-extern Texture textures[NUM_PLANETS_TEXTURES];
 
 void PhysicsEngine::Initialize()
 {
 	/* Создает нашу планету (в центре экрана, масса = 1, скорость и ускорение = 0) и добавляет ее в planets[0] */
 	Vector2f pos_my_planet = Vector2f(float(WINDOW_WIDTH / 2), float(WINDOW_HEIGTH / 2));
-	Planet *p_my_planet = new Planet(pos_my_planet, my_planet_radius, my_planet_mass, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), &(textures[0]));
-	planets.insert(pair <int, Planet> (0, *p_my_planet));
+	planets.emplace(0, Planet(pos_my_planet, my_planet_radius, my_planet_mass, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), 0));
 
 	/*  В planets[1] всегда будет храниться наша псевдопланета.
 	Если мышка не нажата - обнуляем массу, если нажата - присваиваем массу нашей планеты */
-	Planet *p_cursor = new Planet(Vector2f(0.0f, 0.0f), 0, 0.0f, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), &(textures[1]));
-	p_cursor->setColor(Color(0, 0, 0, 0));
-	planets.insert(pair <int, Planet>(1, *p_cursor));	
+	planets.emplace(1, Planet(Vector2f(0.0f, 0.0f), 0, 0.0f, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), 1));
+	planets[1].image -> setColor(Color(0, 0, 0, 0));
 }
 
 void PhysicsEngine::UpdatePosition()
 {
 	GetOutBorders();
-	PlanetsGeneration();
+	GeneratePlanets();
 	CalculateAccelerations();
-	GravityMovement();
-
-	/* Скорость и ускорения курсора всегда равны нулю */
-	map<int, Planet>::iterator coursor = ++(planets.begin());
-	coursor->second.acceleration = Vector2f(0.0f, 0.0f);
-	coursor->second.velocity = Vector2f(0.0f, 0.0f);
+	MoveGravity();
+	CollidePlanets();
+	CheckEndExplosions();
 }
 
 /*длина вектора r*/
@@ -60,83 +56,161 @@ void PhysicsEngine::CalculateAccelerations()
 	Vector2f r;
 	float r_abs, f_abs;
 
+	for (map<int, Planet>::iterator i = planets.begin(); i != planets.end(); ++i)
+		i->second.acceleration = Vector2f(0,0);
+	
+	map<int, Planet>::iterator it_coursor = ++planets.begin();
 	for (map<int,Planet>::iterator i = planets.begin(); i != planets.end(); ++i)
 	{
 		for (map<int, Planet>::iterator j = planets.begin(); j != i; ++j)
 		{
+			if (j == it_coursor)
+				continue;
 			r = j->second.getPosition() - i->second.getPosition();
 			r_abs = Length(r);
 			if (r_abs > r_min)
 				r_abs = r_min;
 			f_abs = gravity / (r_abs * r_abs);
-			i->second.acceleration = ((f_abs *  j->second.mass) / r_abs) * r;
-			j->second.acceleration = -((f_abs *  i->second.mass) / r_abs) * r;
+			i->second.acceleration += ((f_abs *  j->second.mass) / r_abs) * r;
+			j->second.acceleration += -((f_abs *  i->second.mass) / r_abs) * r;
 		}
 	}
+	
+	planets[1].acceleration = Vector2f(0, 0);
 }
 
 /* Изменяет положение планет, основываясь только на их гравитационном взаимодействии (без столкновений)*/
-void PhysicsEngine::GravityMovement()
+void PhysicsEngine::MoveGravity()
 {
 	Vector2f dv;
 	int size = planets.size();
+	map<int, Planet>::iterator it_coursor = ++(planets.begin());
 	for (map<int, Planet>::iterator i = planets.begin(); i != planets.end(); ++i)
 	{
+		if (i == it_coursor)
+			continue;
 		dv = i->second.acceleration * dt;
 		i->second.setPosition(i->second.getPosition() + (i->second.velocity + dv / 2.0f) * dt);
 		i->second.velocity += dv;
 	}
 }
 
-/* Обрабатывает столкновения планет (не дописана) */
-void PhysicsEngine::Collision()
+/* Обрабатывает столкновения планет */
+void PhysicsEngine::CollidePlanets()
 {
-	Vector2f r;
+	Vector2f r, place;
 	int size = planets.size();
+	float distance;
+	map<int, Planet>::iterator it_cursor = ++(planets.begin());
 	for (map<int, Planet>::iterator i = planets.begin(); i != planets.end(); ++i)
 	{
 		for (map<int, Planet>::iterator j = planets.begin(); j != i; ++j)
 		{
 			r = j->second.getPosition() - i->second.getPosition();
+			distance = Length(r);
+			if (distance < j->second.radius + i->second.radius)
+			{
+				if ((i == planets.begin() && i->second.radius < j->second.radius)
+					|| (j == planets.begin() && j->second.radius < i->second.radius))
+				{
+					cout << "End Game" << endl << endl;
+					end_game = true;
+				}
+					
+				else if ((i == it_cursor) || (j == it_cursor))
+					continue;
+				else
+				{ 
+					int k = 0;
+					while (k < exploiding_id.size() && exploiding_id[k] != i->first && exploiding_id[k] != j->first)
+						++k;
+
+					if (k != exploiding_id.size())
+						continue;
+					
+					place = i->second.getPosition() + r / 2.0f;
+					expl_mutex.lock();
+					explosions->emplace_back(Explosion(0, i, j));
+					expl_mutex.unlock();
+					
+					exploiding_id.push_back(i->first);
+				}			
+			}
 		}
 	}
 }
 
-/* делает моментальный снимок списка планет для физических вычислений и записывает в copy_planets для рисования  */
-void PhysicsEngine::GetSnapshot(map<int, Planet>& copy_planets)
+void PhysicsEngine::CheckEndExplosions()
 {
-	map<int, Planet>::iterator i = planets.begin(), j = copy_planets.begin(), tmp;
-	for (; i != planets.end() && j != copy_planets.end(); ++i)
+	if (explosions->empty())
+		return;
+	
+	expl_mutex.lock();
+	vector<int>::iterator k;
+	for (vector<Explosion>::iterator it = explosions->begin(); it != explosions->end(); )
 	{
-		while (i != planets.end() && j != copy_planets.end() && i->first > j->first)
+		if (it->step == end_explosion_step / 2)
 		{
-			tmp = j++;
-			copy_planets.erase(tmp);
+			k = exploiding_id.begin();
+			while (*k != it->i->first && *k != it->j->first)
+				++k;
+			exploiding_id.erase(k);
+
+			Merge(it->i, it->j);		
+			it = explosions->erase(it);
 		}
-		if (j != copy_planets.end() && i->first == j->first)
-		{
-			j->second.SetСharacteristics(i->second.getPosition(), i->second.radius, i->second.mass, i->second.velocity, i->second.acceleration);
-			++j;
-		}
+		else
+			++it;
 	}
-	while (i != planets.end())
-	{
-		copy_planets.insert(*i);
-		++i;
-	}
-	while (j != copy_planets.end())
-	{
-		tmp = j++;
-		copy_planets.erase(tmp);
-	}		
+	expl_mutex.unlock();
 }
 
-/* Задает курсору массу, равную массе нашей планеты, во время нажатия мышки */
+void PhysicsEngine::Merge(map<int, Planet>::iterator i, map<int, Planet>::iterator j)
+{
+	float new_mass;
+	if (j->second.mass == i->second.mass)
+	{
+		planets.erase(i);
+		planets.erase(j);
+		return;
+	}
+
+	Planet planet1 = i->second, planet2 = j->second, planet_res;
+	new_mass = planet1.mass + planet2.mass;
+	planet_res.velocity = (planet1.mass * planet1.velocity + planet2.mass *  planet2.velocity) / new_mass;
+	planet_res.mass = new_mass;
+
+	if (planet1.mass > planet2.mass)
+	{
+		planet_res.radius = planet1.radius * pow(new_mass / planet1.mass, 1.0f / 3.0f);
+		i->second.SetСharacteristics(i->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, i->second.acceleration);
+		planets.erase(j);
+	}	
+	else
+	{
+		planet_res.radius = planet2.radius * pow(new_mass / planet2.mass, 1.0f /3.0f);
+		j->second.SetСharacteristics(j->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, j->second.acceleration);
+		planets.erase(i);
+	}
+		
+}
+
+/* Задает курсору массу, равную массе всех существующих планет, во время нажатия мышки */
 void PhysicsEngine::CoursorPlanetOn(Vector2f coursor_position)
 {
-	map<int, Planet>::iterator my_planet = planets.begin(), coursor = ++(planets.begin());
+	float sum_mass = 0;
+	
+	if (planets.size() <= 2)
+		return;
+	map<int, Planet>::iterator i = planets.begin();
+	advance(i, 2);
+	
+	for (; i != planets.end(); ++i)
+		sum_mass += i->second.mass;
+	sum_mass *= mass_coeff;
+
 	_mutex.lock();
-	coursor->second.SetСharacteristics(coursor_position, my_planet->second.radius, my_planet -> second.mass, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0));
+	planets[1].SetСharacteristics(coursor_position, planets[0].radius, sum_mass * mass_coeff, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0));
 	_mutex.unlock();
 }
 
@@ -149,14 +223,24 @@ void PhysicsEngine::CoursorPlanetOff()
 	_mutex.unlock();
 }
 
-inline bool GetOutXBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
+inline bool OnXBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
 {
 	return ((WINDOW_WIDTH - (i->second.getPosition().x)) <= i->second.radius || i->second.getPosition().x <= i->second.radius);
 }
 
-inline bool GetOutYBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
+inline bool OnYBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
 {
 	return ((WINDOW_HEIGTH - (i->second.getPosition().y)) <= i->second.radius || i->second.getPosition().y <= i->second.radius);
+}
+
+inline bool GetOutXBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
+{
+	return ((-WINDOW_WIDTH + (i->second.getPosition().x)) >= i->second.radius || i->second.getPosition().x <= -(i->second.radius));
+}
+
+inline bool GetOutYBorders(map<int, Planet>& planets, map<int, Planet>::iterator i)
+{
+	return ((-WINDOW_HEIGTH + (i->second.getPosition().y)) >= i->second.radius || i->second.getPosition().y <= -(i->second.radius));
 }
 
 /* При столкновении с границами окна:
@@ -165,9 +249,9 @@ void PhysicsEngine::GetOutBorders()
 {
 	map<int, Planet>::iterator i = planets.begin();
 	
-	if (GetOutYBorders(planets, i))
+	if (OnYBorders(planets, i))
 		i->second.velocity.y = -(i->second.velocity.y);
-	if (GetOutXBorders(planets, i))
+	if (OnXBorders(planets, i))
 		i->second.velocity.x = -(i->second.velocity.x);
 	
 	if (planets.size() <= 2)
@@ -187,6 +271,28 @@ void PhysicsEngine::GetOutBorders()
 	}
 }
 
+Vector2f GetCornerView(Planet & planet)
+{
+	Vector2f view_pos;
+	if (planet.getPosition().y < VIEW_HEIGTH / 2)
+		view_pos.y = VIEW_HEIGTH / 2;
+	else if (planet.getPosition().y > WINDOW_HEIGTH - (VIEW_HEIGTH / 2))
+		view_pos.y = WINDOW_HEIGTH - (VIEW_HEIGTH / 2);
+	else
+		view_pos.y = planet.getPosition().y;
+
+	if (planet.getPosition().x < VIEW_WIDTH / 2)
+		view_pos.x = VIEW_WIDTH / 2;
+	else if (planet.getPosition().x > WINDOW_WIDTH - (VIEW_WIDTH / 2))
+		view_pos.x = WINDOW_WIDTH - (VIEW_WIDTH / 2);
+	else
+		view_pos.x = planet.getPosition().x;
+
+	return (view_pos - Vector2f(VIEW_WIDTH / 2, VIEW_HEIGTH / 2));
+}
+
+bool is_occupied_place[WINDOW_WIDTH / block_size][WINDOW_HEIGTH / block_size];
+
 /* Находит место для новой планеты. Для этого используется глобальный массив is_occupied_place, 
 	который представляет из себя игровое поле, разбитое на сектора размера block_size * block_size.
 	Сектор помечается занятым, если в нем находится другая планета или он в видимости пользователя.
@@ -203,9 +309,7 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 			is_occupied_place[i][j] = false;
 	}
 
-	Vector2i pos_corner_view = Vector2i(planets[0].getPosition()) - Vector2i(VIEW_WIDTH / 2, VIEW_HEIGTH / 2);
-	if (pos_corner_view.x < 0 || pos_corner_view.y < 0)
-		pos_corner_view = Vector2i(0, 0);
+	Vector2f pos_corner_view = GetCornerView(planets[0]);
 
 	/* Отмечает блоки, занятые view (то есть в видимости пользователя) */
 	int tmp_x = (pos_corner_view.x + VIEW_WIDTH) / block_size, tmp_y = (pos_corner_view.y + VIEW_HEIGTH) / block_size;
@@ -217,8 +321,11 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 
 	/* Отмечает блоки, зантяые другими планетами */
 	Vector2i planet_pos;
+	map<int, Planet>::iterator it_coursor = ++planets.begin();
 	for (map<int, Planet>::iterator it = planets.begin(); it != planets.end(); ++it)
 	{
+		if (it == it_coursor)
+			continue;
 		planet_pos = Vector2i(it->second.getPosition());
 		is_occupied_place[planet_pos.x / block_size][planet_pos.y / block_size] = true;
 	}
@@ -247,21 +354,22 @@ bool FindEmptyPlace(map<int, Planet>& planets, Vector2f& empty_place)
 
 /* Количество планет поддерживается (почти) константой. 
  Если на этом шаге мы не нашли пустое место и FindEmptyPlace вернуло false, то откладываем добавление планет до следующего шага.*/
-void PhysicsEngine::PlanetsGeneration()
+void PhysicsEngine::GeneratePlanets()
 { 
 	Vector2f pos_new_planet;
-	Planet *p_new_planet;
 	Vector2f pos_centre_view = planets[0].getPosition(), r;
 	Vector2f new_planet_vel;
+	float new_planet_mass, new_planet_radius, density = planets[0].mass / pow(planets[0].radius, 3);
 	while (planets.size() < NUM_PLANETS)
 	{
 		if (!(FindEmptyPlace(planets, pos_new_planet)))
 			break;
 		r = pos_new_planet - pos_centre_view;
-		new_planet_vel = ((rand() % velocity_dispersion) / Length(r)) * r;
-		p_new_planet = new Planet(pos_new_planet, planets[0].radius + rand() % radius_dispersion, planets[0].mass + rand() % mass_dispersion, 
-			new_planet_vel, Vector2f(0.0f, 0.0f), &(textures[1 + rand() % (NUM_PLANETS_TEXTURES - 1)]));
-		planets.insert(pair <int, Planet>(current_id, *p_new_planet));
+		new_planet_vel = Vector2f(0, 0);
+		new_planet_radius = planets[0].radius * (1.0f +  float((pow(-1, rand() % 2) * (radius_dispersion_min + rand() % radius_dispersion))) / 100.0f);
+		new_planet_mass = density * pow(new_planet_radius, 3);
+		planets.emplace(current_id, Planet(pos_new_planet, new_planet_radius, new_planet_mass,
+			new_planet_vel, Vector2f(0.0f, 0.0f), 2 + rand() % (NUM_PLANETS_TEXTURES - 2)));
 		++current_id;
 	}
 }

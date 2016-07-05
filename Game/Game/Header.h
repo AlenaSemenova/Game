@@ -5,15 +5,24 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <memory>
+#include <cstdlib>
+#include <cmath>
 
 using namespace sf;
 using namespace std;
 
 #include "Planets.h"
+#include "Explosion.h"
 #include "PhysicsEngine.h"
+#include "Scene.h"
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGTH 600
-#define VIEW_WIDTH 400
-#define VIEW_HEIGTH 300
-#define NUM_PLANETS_TEXTURES 2
+#define WINDOW_WIDTH 1000
+#define WINDOW_HEIGTH 700
+#define VIEW_WIDTH 500
+#define VIEW_HEIGTH 350
+#define NUM_PLANETS_TEXTURES 9
+#define NUM_SKY_TEXTURES 5
+
+
+
