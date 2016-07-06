@@ -20,7 +20,6 @@ extern float dt;
 extern mutex _mutex;
 extern mutex expl_mutex;
 extern std::atomic<bool> end_game;
-int current_id = 2;
 
 void PhysicsEngine::Initialize()
 {
@@ -32,6 +31,8 @@ void PhysicsEngine::Initialize()
 	Если мышка не нажата - обнуляем массу, если нажата - присваиваем массу нашей планеты */
 	planets.emplace(1, Planet(Vector2f(0.0f, 0.0f), 0, 0.0f, Vector2f(0.0f, 0.0f), Vector2f(0.0f, 0.0f), 1));
 	planets[1].image -> setColor(Color(0, 0, 0, 0));
+
+	current_id = 2;
 }
 
 void PhysicsEngine::UpdatePosition()
@@ -112,10 +113,7 @@ void PhysicsEngine::CollidePlanets()
 			{
 				if ((i == planets.begin() && i->second.radius < j->second.radius)
 					|| (j == planets.begin() && j->second.radius < i->second.radius))
-				{
-					cout << "End Game" << endl << endl;
 					end_game = true;
-				}
 					
 				else if ((i == it_cursor) || (j == it_cursor))
 					continue;
@@ -152,11 +150,11 @@ void PhysicsEngine::CheckEndExplosions()
 		if (it->step == end_explosion_step / 2)
 		{
 			k = exploiding_id.begin();
-			while (*k != it->i->first && *k != it->j->first)
+			while (*k != it->first_planet->first && *k != it->second_planet->first)
 				++k;
 			exploiding_id.erase(k);
 
-			Merge(it->i, it->j);		
+			Merge(it->first_planet, it->second_planet);
 			it = explosions->erase(it);
 		}
 		else
@@ -165,17 +163,17 @@ void PhysicsEngine::CheckEndExplosions()
 	expl_mutex.unlock();
 }
 
-void PhysicsEngine::Merge(map<int, Planet>::iterator i, map<int, Planet>::iterator j)
+void PhysicsEngine::Merge(map<int, Planet>::iterator first_planet, map<int, Planet>::iterator second_planet)
 {
 	float new_mass;
-	if (j->second.mass == i->second.mass)
+	if (second_planet->second.mass == first_planet->second.mass)
 	{
-		planets.erase(i);
-		planets.erase(j);
+		planets.erase(first_planet);
+		planets.erase(second_planet);
 		return;
 	}
 
-	Planet planet1 = i->second, planet2 = j->second, planet_res;
+	Planet planet1 = first_planet->second, planet2 = second_planet->second, planet_res;
 	new_mass = planet1.mass + planet2.mass;
 	planet_res.velocity = (planet1.mass * planet1.velocity + planet2.mass *  planet2.velocity) / new_mass;
 	planet_res.mass = new_mass;
@@ -183,16 +181,15 @@ void PhysicsEngine::Merge(map<int, Planet>::iterator i, map<int, Planet>::iterat
 	if (planet1.mass > planet2.mass)
 	{
 		planet_res.radius = planet1.radius * pow(new_mass / planet1.mass, 1.0f / 3.0f);
-		i->second.SetСharacteristics(i->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, i->second.acceleration);
-		planets.erase(j);
+		first_planet->second.SetСharacteristics(first_planet->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, first_planet->second.acceleration);
+		planets.erase(second_planet);
 	}	
 	else
 	{
 		planet_res.radius = planet2.radius * pow(new_mass / planet2.mass, 1.0f /3.0f);
-		j->second.SetСharacteristics(j->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, j->second.acceleration);
-		planets.erase(i);
-	}
-		
+		second_planet->second.SetСharacteristics(second_planet->second.position, planet_res.radius, planet_res.mass, planet_res.velocity, second_planet->second.acceleration);
+		planets.erase(first_planet);
+	}		
 }
 
 /* Задает курсору массу, равную массе всех существующих планет, во время нажатия мышки */

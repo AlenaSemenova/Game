@@ -19,5 +19,7 @@ public:
 	void Draw();
 	void DrawGameOver();
 	void SetView();
-	void PrepareTimeText();
+	void ConvertTimeToText(string first_word);
+	void InitializeGameOverScene(Text &text);
+	void PrepareGameOverTimeText(Text &time_text);
 };

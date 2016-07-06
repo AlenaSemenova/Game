@@ -7,6 +7,7 @@ public:
 	map <int, Planet> planets;
 	vector <Explosion>* explosions;
 	vector <int> exploiding_id;
+	int current_id;
 	
 	void Initialize();
 	void UpdatePosition();
@@ -17,6 +18,6 @@ public:
 	void CoursorPlanetOff();
 	void GetOutBorders();
 	void GeneratePlanets();
-	void Merge(map<int, Planet>::iterator i, map<int, Planet>::iterator j);
+	void Merge(map<int, Planet>::iterator first_planet, map<int, Planet>::iterator second_planet);
 	void CheckEndExplosions();
 };

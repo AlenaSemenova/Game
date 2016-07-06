@@ -1,6 +1,7 @@
 ﻿#include "Header.h"
 
-#define texture_size 128.0f
+#define CHARACTER_TEXT_SIZE 150
+#define time_step 20
 
 extern mutex expl_mutex;
 
@@ -46,15 +47,14 @@ void Scene::Initialize(Texture * sky_textures)
 	Font *font = new Font;
 	font->loadFromFile("Invertor.ttf");
 	time_text.setFont(*font);
-	time_text.setCharacterSize(50);
+	time_text.setCharacterSize(CHARACTER_TEXT_SIZE / 3);
 	time_text.setColor(Color::White);
 	FloatRect textRect = time_text.getLocalBounds();
 	time_text.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
 }
 
-void Scene::PrepareTimeText()
+void Scene::ConvertTimeToText(string first_word)
 {
-	time_text.setPosition(view.getCenter() + Vector2f(VIEW_WIDTH / 4.0f, -VIEW_HEIGTH / 2.0f));
 	int int_minutes = int(result_time.asSeconds()) / 60;
 	int int_seconds = int(result_time.asSeconds()) % 60;
 
@@ -62,7 +62,7 @@ void Scene::PrepareTimeText()
 	itoa(int_seconds, str_seconds, 10);
 	itoa(int_minutes, str_minutes, 10);
 
-	time_text.setString("Time: " + string(str_minutes) + "." + string(str_seconds));
+	time_text.setString(first_word + " " + string(str_minutes) + "." + string(str_seconds));
 }
 
 
@@ -71,6 +71,7 @@ void Scene::Draw()
 	draw(background);
 	SetView();
 
+	float texture_size = 128.0f;
 	for (map<int, Planet>::iterator i = planets.begin(); i != planets.end(); ++i)
 	{
 		i->second.image->setPosition(i->second.position);
@@ -87,40 +88,53 @@ void Scene::Draw()
 	}		
 	expl_mutex.unlock();
 
-	PrepareTimeText();
+	ConvertTimeToText("Time:");
+	time_text.setPosition(view.getCenter() + Vector2f(VIEW_WIDTH / 4.0f, -VIEW_HEIGTH / 2.0f));
 	draw(time_text);
 }
 
-void Scene::DrawGameOver()
+void PrepareGameOverText(Text &text)
 {
-	Texture *end_texture = new Texture;
-	end_texture->loadFromFile("images/hq-wallpapers_ru_space_4102_1920x1200.png");
-	Sprite end_image(*end_texture);
-	
 	Font *font = new Font;
 	font->loadFromFile("Invertor.ttf");
-	Text text;
 	text.setFont(*font);
-	text.setCharacterSize(150);
+	text.setCharacterSize(CHARACTER_TEXT_SIZE);
 	text.setColor(Color::White);
 	text.setString("Game over");
 	text.setPosition(Vector2f(WINDOW_WIDTH / 2, WINDOW_HEIGTH * 1 / 10));
 	FloatRect textRect = text.getLocalBounds();
 	text.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
-	
+}
+
+void Scene::PrepareGameOverTimeText(Text &time_text)
+{
 	FloatRect ttextRect = time_text.getLocalBounds();
 	time_text.setOrigin(ttextRect.left + ttextRect.width / 2.0f, ttextRect.top + ttextRect.height / 2.0f);
-	time_text.setCharacterSize(150);
+	time_text.setCharacterSize(CHARACTER_TEXT_SIZE);
 	time_text.setPosition(Vector2f(WINDOW_WIDTH / 2, WINDOW_HEIGTH * 1 / 5));
-	int int_minutes = int(result_time.asSeconds()) / 60;
-	int int_seconds = int(result_time.asSeconds()) % 60;
-	char str_minutes[5], str_seconds[5];
-	itoa(int_seconds, str_seconds, 10);
-	itoa(int_minutes, str_minutes, 10);
-	time_text.setString("Your result: " + string(str_minutes) + "." + string(str_seconds));
+
+	ConvertTimeToText("Your result:");
+}
+
+void Scene::InitializeGameOverScene(Text &text)
+{
+	Texture *background_texture = new Texture;
+	background_texture->loadFromFile("images/hq-wallpapers_ru_space_4102_1920x1200.png");
+	background.setTexture(*background_texture);
+	background.scale(2.0f, 2.0f);
+
+	PrepareGameOverText(text);
+	PrepareGameOverTimeText(time_text);
+}
+
+void Scene::DrawGameOver()
+{
+	Text text;
+	InitializeGameOverScene(text);
 	setView(getDefaultView());
 
 	Event event;
+	Clock elapsed_time;
 	while (isOpen())
 	{
 		while (pollEvent(event))
@@ -130,11 +144,13 @@ void Scene::DrawGameOver()
 		}
 
 		clear();
-		draw(end_image);
+		draw(background);
 		draw(time_text);
 		draw(text);
 		display();
-		sleep(milliseconds(20));
+		
+		sleep(milliseconds(time_step) - elapsed_time.getElapsedTime());
+		elapsed_time.restart();
 	}
 }
 
